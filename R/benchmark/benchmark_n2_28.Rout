@@ -1,0 +1,175 @@
+
+R version 3.3.1 (2016-06-21) -- "Bug in Your Hair"
+Copyright (C) 2016 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> rm(list = ls(all = TRUE))
+> require("dotCall64")
+Loading required package: dotCall64
+> require("microbenchmark")
+Loading required package: microbenchmark
+> require("OpenMPController"); omp_set_num_threads(1)
+Loading required package: OpenMPController
+[[1]]
+[1] 1
+
+> mb <- microbenchmark
+> 
+> ## functions to print latex tables with brackets
+> Round <- function(x, k) format(round(x, k), nsmall=k)
+> xxtab <- function(x, b, digits){
++     x <- Round(x, digits)
++     b <- paste0(" (", Round(b, digits), ") ", c(rep("& ", length(b)-1), "\\\\"))
++     paste(c(rbind(x, b)), collapse = "")
++ }
+> xxxtab <- function(xmat, bmat, digits = 1){
++     for(i in 1:nrow(xmat))
++         cat(xxtab(xmat[i,], bmat[i,], digits = digits) , "\n")
++ }
+> ## xxtab(1:5, 6:10, 3)
+> ## xxxtab(array(1:4, c(2,2))/7,array(1:4, c(2,2))+10 /7, 2)
+> 
+> 
+> ## read / read and write -------------------------------------------
+> times <- 100
+> len <- 2^28
+> num <- numeric(len)
+> int <- integer(len)
+> 
+> fd_mb <- mb(
++     .C("BENCHMARK", a = num, NAOK = FALSE, PACKAGE = "dotCall64"),
++     .C64("BENCHMARK", SIGNATURE = "double", a = num, INTENT = "rw",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "double", a = num, INTENT = "r",
++          NAOK = FALSE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     .C("BENCHMARK", a = num, NAOK = TRUE, PACKAGE = "dotCall64"),
++     .C64("BENCHMARK", SIGNATURE = "double", a = num, INTENT = "rw",
++          NAOK = TRUE, PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "double", a = num, INTENT = "r",
++          NAOK = TRUE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     times = times)
+> 
+> fd_df <- as.data.frame(fd_mb)
+> levels(fd_df$expr) <- c(".C", ".C64", ".C64r", ".CNA", ".C64NA", ".C64NAr")
+> fd_median <- c(unlist(by(fd_df[[2]], fd_df[[1]], median)))
+> fd_IQR <- c(unlist(by(fd_df[[2]], fd_df[[1]], IQR)))
+> 
+> 
+> fi_mb <- mb(
++     .C("BENCHMARK", a = int, NAOK = FALSE, PACKAGE = "dotCall64"),
++     .C64("BENCHMARK", SIGNATURE = "integer", a = int, INTENT = "rw",
++          NAOK = FALSE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "integer", a = int, INTENT = "r",
++          NAOK = FALSE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     .C("BENCHMARK", a = int, NAOK = TRUE, PACKAGE = "dotCall64"),
++     .C64("BENCHMARK", SIGNATURE = "integer", a = int, INTENT = "rw",
++          NAOK = TRUE, PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "integer", a = int, INTENT = "r",
++          NAOK = TRUE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     times = times)
+> fi_df <- as.data.frame(fi_mb)
+> levels(fi_df$expr) <- c(".C", ".C64", ".C64r", ".CNA", ".C64NA", ".C64NAr")
+> fi_median <- c(unlist(by(fi_df[[2]], fi_df[[1]], median)))
+> fi_IQR <- c(unlist(by(fi_df[[2]], fi_df[[1]], IQR)))
+> 
+> fi64_mb <- mb(
++     .C64("BENCHMARK", SIGNATURE = "int64", a = num, INTENT = "rw",
++          NAOK = FALSE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "int64", a = num, INTENT = "r",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "int64", a = num, INTENT = "rw",
++          NAOK = TRUE,  PACKAGE = "dotCall64", VERBOSE = 0),
++     .C64("BENCHMARK", SIGNATURE = "int64", a = num, INTENT = "r",
++          NAOK = TRUE, PACKAGE = "dotCall64", VERBOSE = 0),
++               times = times)
+> fi64_df <- as.data.frame(fi64_mb)
+> levels(fi64_df$expr) <- c(".C64", ".C64r", ".C64NA", ".C64NAr")
+> fi64_median <- c(unlist(by(fi64_df[[2]], fi64_df[[1]], median)))
+> fi64_IQR <- c(unlist(by(fi64_df[[2]], fi64_df[[1]], IQR)))
+> 
+> 
+> tab <- round(rbind(fd_median, fi_median, fi64_median = fi64_median[c(NA,1,2,NA,3,4)]) / 1e9, 2)
+> tabIQR <- round(rbind(fd_IQR, fi_IQR, fi64_IQR = fi64_IQR[c(NA,1,2,NA,3,4)]) / 1e9, 2)
+> tab
+              .C .C64 .C64r .CNA .C64NA .C64NAr
+fd_median   2.65 3.16  1.82 1.33   1.33    0.00
+fi_median   1.09 1.09  0.43 0.66   0.66    0.00
+fi64_median   NA 5.21  3.80   NA   3.36    1.97
+> tabIQR
+           .C .C64 .C64r .CNA .C64NA .C64NAr
+fd_IQR   0.05 0.06  0.02 0.06   0.05    0.00
+fi_IQR   0.03 0.04  0.01 0.03   0.04    0.00
+fi64_IQR   NA 0.20  0.06   NA   0.06    0.06
+> 
+> ## units: seconds
+> xxxtab(tab, tabIQR, 2)
+2.65 (0.05) & 3.16 (0.06) & 1.82 (0.02) & 1.33 (0.06) & 1.33 (0.05) & 0.00 (0.00) \\ 
+1.09 (0.03) & 1.09 (0.04) & 0.43 (0.01) & 0.66 (0.03) & 0.66 (0.04) & 0.00 (0.00) \\ 
+  NA (  NA) & 5.21 (0.20) & 3.80 (0.06) &   NA (  NA) & 3.36 (0.06) & 1.97 (0.06) \\ 
+> 
+> sessionInfo()
+R version 3.3.1 (2016-06-21)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Ubuntu 14.04.5 LTS
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=C              
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=de_CH.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] OpenMPController_0.1-2 microbenchmark_1.4-2.1 dotCall64_0.9-01      
+
+loaded via a namespace (and not attached):
+[1] colorspace_1.2-6 scales_0.4.0     plyr_1.8.4       gtable_0.2.0    
+[5] Rcpp_0.12.6      ggplot2_2.1.0    grid_3.3.1       munsell_0.4.3   
+> system("head -n25 /proc/cpuinfo")  ## works on Linux
+processor	: 0
+vendor_id	: GenuineIntel
+cpu family	: 6
+model		: 47
+model name	: Intel(R) Xeon(R) CPU E7- 2850  @ 2.00GHz
+stepping	: 2
+microcode	: 0x36
+cpu MHz		: 1064.000
+cache size	: 24576 KB
+physical id	: 0
+siblings	: 10
+core id		: 0
+cpu cores	: 10
+apicid		: 0
+initial apicid	: 0
+fpu		: yes
+fpu_exception	: yes
+cpuid level	: 11
+wp		: yes
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 cx16 xtpr pdcm pcid dca sse4_1 sse4_2 popcnt aes lahf_lm ida arat epb dtherm tpr_shadow vnmi flexpriority ept vpid
+bogomips	: 3990.19
+clflush size	: 64
+cache_alignment	: 64
+address sizes	: 44 bits physical, 48 bits virtual
+power management:
+> 
+> proc.time()
+    user   system  elapsed 
+2266.879  680.987 2971.340 

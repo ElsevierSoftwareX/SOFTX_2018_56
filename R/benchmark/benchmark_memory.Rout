@@ -1,0 +1,207 @@
+
+R version 3.3.1 (2016-06-21) -- "Bug in Your Hair"
+Copyright (C) 2016 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> rm(list = ls(all = TRUE))
+> require("dotCall64")
+Loading required package: dotCall64
+> require("microbenchmark")
+Loading required package: microbenchmark
+> require("xtable"); options(xtable.NA.string = "--")
+Loading required package: xtable
+> require("OpenMPController"); omp_set_num_threads(1)
+Loading required package: OpenMPController
+[[1]]
+[1] 1
+
+> mem <- function(...){
++     ## measure peak memory usage with gctorture()
++     
++     exprs <- c(as.list(match.call(expand.dots = FALSE)$...))
++     exprnm <- sapply(exprs, function(e) paste(deparse(e), collapse = " "))
++ 
++     ## give names
++     nm <- names(exprs)
++     if (is.null(nm))
++         nm <- exprnm
++     else nm[nm == ""] <- exprnm[nm == ""]
++ 
++     n <- length(exprs)
++ 
++     out <- data.frame(expr = rep(NA, n), mem.peak = rep(NA, n),
++                       mem.end = rep(NA, n))
++     out[, "expr"] <- nm
++     for(i in 1:n){
++         mem.before <- gc(reset=TRUE)[2,2]
++         gctorture(TRUE)
++         eval(exprs[[i]])
++         gctorture(FALSE)
++         gc.report <- gc()
++         mem.max <- gc.report[2,6]
++         mem.after <- gc.report[2,2]
++         out[i, "mem.peak"] <- mem.max - mem.before
++         out[i, "mem.end"]<- mem.after - mem.before
++     }
++     out
++ }
+> 
+> ## table memory usage ---
+> len <- 2^27
+> num <- numeric(len)
+> int <- integer(len)
+> 
+> 
+> mfd0 <- expression({
++     .C("BENCHMARK", a = num, NAOK = FALSE, PACKAGE = "dotCall64")
++ })
+> mfd_rw <- expression({
++     .C64("BENCHMARK", "double", a = num, INTENT = "rw",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> mfd_r <- expression({
++     .C64("BENCHMARK", "double", a = num, INTENT = "r",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> mfd0C <- expression({
++     .C("BENCHMARK", a = numeric(len), NAOK = FALSE, PACKAGE = "dotCall64")
++ })
+> mfd_w <- expression({
++     .C64("BENCHMARK", "double", a = numeric_dc(len), INTENT = "w",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> fd_mm <- mem(eval(mfd0), eval(mfd_rw), eval(mfd_r), eval(mfd0C), eval(mfd_w))
+> 
+> 
+> mfi0 <- expression({
++     .C("BENCHMARK", a = int, NAOK = FALSE, PACKAGE = "dotCall64")
++ })
+> mfi_rw <- expression({
++     .C64("BENCHMARK", "integer", a = int, INTENT = "rw",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> mfi_r <- expression({
++     .C64("BENCHMARK", "integer", a = int, INTENT = "r",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> mfi0C <- expression({
++     .C("BENCHMARK", a = integer(len), NAOK = FALSE, PACKAGE = "dotCall64")
++ })
+> mfi_w <- expression({
++     .C64("BENCHMARK", "integer", a = integer_dc(len), INTENT = "w",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> fi_mm <- mem(eval(mfi0), eval(mfi_rw), eval(mfi_r), eval(mfi0C), eval(mfi_w))
+> 
+> 
+> mfi64_rw <- expression({
++     .C64("BENCHMARK", "int64", a = num, INTENT = "rw",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> mfi64_r <- expression({
++     .C64("BENCHMARK", "int64", a = num, INTENT = "r",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> mfi64_w <- expression({
++     .C64("BENCHMARK", "int64", a = numeric_dc(len), INTENT = "w",
++          NAOK = FALSE, PACKAGE = "dotCall64", VERBOSE = 0)
++ })
+> 
+> fi64_mm <- mem(eval(mfi64_rw), eval(mfi64_r), eval(mfi64_w))
+> 
+> 
+> tab_mem <- rbind(fd_mm$mem.peak / mem(double(len))$mem.peak,
++                  fi_mm$mem.peak / mem(integer(len))$mem.peak,
++                  c(fi64_mm$mem.peak / mem(double(len))$mem.peak)[c(NA,1,2,NA,3)]) 
+> tab_mem <- data.frame(tab_mem)
+> colnames(tab_mem) <- c(".C()", ".C64(rw)", ".C64(r)",
++                        ".C()", ".C64(w NAOK)")
+> tab_mem
+  .C() .C64(rw) .C64(r) .C() .C64(w NAOK)
+1    1        1       0    1            1
+2    1        1       0    1            1
+3   NA        1       1   NA            1
+> 
+> xtable(tab_mem, digits = 0)
+% latex table generated in R 3.3.1 by xtable 1.8-2 package
+% Wed Sep 28 23:46:57 2016
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrrrr}
+  \hline
+ & .C() & .C64(rw) & .C64(r) & .C() & .C64(w NAOK) \\ 
+  \hline
+1 & 1 & 1 & 0 & 1 & 1 \\ 
+  2 & 1 & 1 & 0 & 1 & 1 \\ 
+  3 & -- & 1 & 1 & -- & 1 \\ 
+   \hline
+\end{tabular}
+\end{table}
+> 
+> sessionInfo()
+R version 3.3.1 (2016-06-21)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Ubuntu 14.04.5 LTS
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=C              
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=de_CH.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] OpenMPController_0.1-2 xtable_1.8-2           microbenchmark_1.4-2.1
+[4] dotCall64_0.9-01      
+
+loaded via a namespace (and not attached):
+[1] colorspace_1.2-6 scales_0.4.0     plyr_1.8.4       gtable_0.2.0    
+[5] Rcpp_0.12.6      ggplot2_2.1.0    grid_3.3.1       munsell_0.4.3   
+> system("head -n25 /proc/cpuinfo")  ## works on Linux
+processor	: 0
+vendor_id	: GenuineIntel
+cpu family	: 6
+model		: 47
+model name	: Intel(R) Xeon(R) CPU E7- 2850  @ 2.00GHz
+stepping	: 2
+microcode	: 0x36
+cpu MHz		: 1064.000
+cache size	: 24576 KB
+physical id	: 0
+siblings	: 10
+core id		: 0
+cpu cores	: 10
+apicid		: 0
+initial apicid	: 0
+fpu		: yes
+fpu_exception	: yes
+cpuid level	: 11
+wp		: yes
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 cx16 xtpr pdcm pcid dca sse4_1 sse4_2 popcnt aes lahf_lm ida arat epb dtherm tpr_shadow vnmi flexpriority ept vpid
+bogomips	: 3990.19
+clflush size	: 64
+cache_alignment	: 64
+address sizes	: 44 bits physical, 48 bits virtual
+power management:
+> 
+> proc.time()
+   user  system elapsed 
+ 15.724   4.534  20.555 
